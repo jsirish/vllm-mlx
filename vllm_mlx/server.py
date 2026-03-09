@@ -1943,7 +1943,11 @@ async def stream_chat_completion(
                             content=delta_msg.content,
                             reasoning=delta_msg.reasoning,
                         ),
-                        finish_reason=output.finish_reason if output.finished else None,
+                        finish_reason=(
+                            "tool_calls"
+                            if (output.finished and tool_calls_detected)
+                            else (output.finish_reason if output.finished else None)
+                        ),
                     )
                 ],
                 usage=get_usage(output) if output.finished else None,
