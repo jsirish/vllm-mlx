@@ -69,7 +69,7 @@ class SchedulerConfig:
     # Memory-aware cache settings (recommended for large models)
     use_memory_aware_cache: bool = True  # Use memory-based eviction
     cache_memory_mb: Optional[int] = None  # None = auto-detect (20% of available RAM)
-    cache_memory_percent: float = 0.20  # Fraction of available RAM if auto-detecting
+    cache_memory_percent: float = 0.05  # Fraction of available RAM if auto-detecting
 
     # KV cache quantization (reduces prefix cache memory)
     kv_cache_quantization: bool = False
@@ -1513,7 +1513,13 @@ class Scheduler:
         if request.request_id in self.requests:
             raise ValueError(f"Request {request.request_id} already exists")
 
+        # Hard guard against Metal Out of Memory (OOM) crashes on Apple Silicon.
+        # Qwen3-Coder-Next requires ~2.4MB KV cache per token. 
+        # A 75K token prompt needs 185GB+ unified memory, exceeding the Mac Studio limit.
+        OOM_TOKEN_LIMIT = 65536
+        
         # Tokenize if needed
+
         if request.prompt_token_ids is None:
             if isinstance(request.prompt, str):
                 # Handle both tokenizers and processors (for MLLM models)
@@ -1534,6 +1540,16 @@ class Scheduler:
             else:
                 request.prompt_token_ids = list(request.prompt)
             request.num_prompt_tokens = len(request.prompt_token_ids)
+
+        if len(request.prompt_token_ids) > OOM_TOKEN_LIMIT:
+            logger.error(
+                f"Request {request.request_id} rejected: Prompt length {len(request.prompt_token_ids)} "
+                f"exceeds Mac Studio OOM guard limit ({OOM_TOKEN_LIMIT})."
+            )
+            raise ValueError(
+                f"Prompt length {len(request.prompt_token_ids)} exceeds OOM token guard "
+                f"limit ({OOM_TOKEN_LIMIT}). Please shorten your prompt or enable RAG."
+            )
 
         # Check prefix cache for cached KV state
         if self.block_aware_cache is not None:
