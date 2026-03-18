@@ -676,6 +676,7 @@ Examples:
         default=32768,
         help="Default max tokens for generation (default: 32768)",
     )
+
     serve_parser.add_argument(
         "--continuous-batching",
         action="store_true",
